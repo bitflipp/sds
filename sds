@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+
+import gi
+import json
+import os
+import subprocess
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk
+from gi.repository import Gdk
+
+
+class SDS(Gtk.Window):
+    def get_process_output(self, *arguments):
+        lines = []
+        output = subprocess.check_output(arguments).decode()
+        for line in output.split("\n"):
+            lines += [line.strip()]
+        return lines
+
+    def query_pactl_sinks(self):
+        sinks = []
+        sink = None
+        for line in self.get_process_output("pactl", "list", "sinks"):
+            if line.startswith("Sink #"):
+                id = line.replace("Sink #", "")
+                sink = {"id": id}
+                sinks += [sink]
+            if line.startswith("Name: "):
+                sink["name"] = line.replace("Name: ", "")
+            if line.startswith("device.product.name = "):
+                sink["display_name"] = line.replace("device.product.name = ",
+                                                    "").replace('"', "")
+        return sinks
+
+    def query_pacmd_sink_inputs(self):
+        sink_inputs = []
+        for line in self.get_process_output("pacmd", "list-sink-inputs"):
+            if line.startswith("index: "):
+                sink_inputs += [int(line.replace("index: ", ""))]
+        return sink_inputs
+
+    def set_sink(self, sink):
+        subprocess.run(["pacmd", "set-default-sink", str(sink["id"])])
+        sink_inputs = self.query_pacmd_sink_inputs()
+        for sink_input in sink_inputs:
+            subprocess.run(
+                ["pacmd", "move-sink-input",
+                 str(sink_input),
+                 str(sink["id"])])
+
+    def __init__(self):
+        settings_file_path = os.path.expanduser("~/.sds.json")
+        try:
+            with open(settings_file_path, "r") as settings_file:
+                self.settings = json.load(settings_file)
+        except:
+            self.settings = {"display_names": {}, "hidden": []}
+
+        Gtk.Window.__init__(self, title="Set default sink")
+        self.set_border_width(10)
+        self.set_default_size(300, 0)
+        self.set_position(Gtk.WindowPosition.CENTER)
+        self.connect("key-press-event", self.on_key_down)
+
+        hbox = Gtk.Box(spacing=6, orientation=Gtk.Orientation.VERTICAL)
+        self.add(hbox)
+
+        sinks = self.query_pactl_sinks()
+        for sink in sinks:
+            if sink["name"] in self.settings["hidden"]:
+                continue
+            display_name = sink["display_name"]
+            if sink["name"] in self.settings["display_names"]:
+                display_name = self.settings["display_names"][sink["name"]]
+            sink_button = Gtk.Button.new_with_label(display_name)
+            sink_button.connect("clicked", self.on_sink_clicked, sink)
+            hbox.pack_start(sink_button, True, True, 0)
+
+    def on_sink_clicked(self, button, *data):
+        sink = data[0]
+        self.set_sink(sink)
+        Gtk.main_quit()
+
+    def on_key_down(self, widget, event):
+        if event.keyval == Gdk.KEY_Escape:
+            Gtk.main_quit()
+
+
+sds = SDS()
+sds.connect("destroy", Gtk.main_quit)
+sds.show_all()
+Gtk.main()
