@@ -7,7 +7,7 @@
 - PyGObject 3.36.1
 
 ## Configuration
-sds looks for a configuration file at `~/.sds.json`. Example:
+sds looks for an optional configuration file at `~/.sds.json`. Example:
 
 ```
 {
