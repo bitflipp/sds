@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
+from gi.repository import Gdk
+from gi.repository import Gtk
 import gi
 import json
 import os
 import subprocess
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk
-from gi.repository import Gdk
 
 
 class SDS(Gtk.Window):
@@ -36,8 +36,8 @@ class SDS(Gtk.Window):
     def query_pacmd_sink_inputs(self):
         sink_inputs = []
         for line in self.get_process_output("pacmd", "list-sink-inputs"):
-            if line.startswith("index: "):
-                sink_inputs += [int(line.replace("index: ", ""))]
+            if line.startswith("Sink Input "):
+                sink_inputs += [int(line.replace("Sink Input ", ""))]
         return sink_inputs
 
     def set_sink(self, sink):
@@ -51,17 +51,15 @@ class SDS(Gtk.Window):
 
     def __init__(self):
         settings_file_path = os.path.expanduser("~/.sds.json")
-        try:
-            with open(settings_file_path, "r") as settings_file:
-                self.settings = json.load(settings_file)
-        except:
-            self.settings = {"display_names": {}, "hidden": []}
+        with open(settings_file_path, "r") as settings_file:
+            self.settings = json.load(settings_file)
 
         Gtk.Window.__init__(self, title="Set default sink")
         self.set_border_width(10)
         self.set_default_size(300, 0)
-        self.set_position(Gtk.WindowPosition.CENTER)
         self.connect("key-press-event", self.on_key_down)
+        self.connect("destroy", Gtk.main_quit)
+        self.set_position(Gtk.WindowPosition.CENTER)
 
         hbox = Gtk.Box(spacing=6, orientation=Gtk.Orientation.VERTICAL)
         self.add(hbox)
@@ -69,13 +67,17 @@ class SDS(Gtk.Window):
         sinks = self.query_pactl_sinks()
         for sink in sinks:
             if sink["name"] in self.settings["hidden"]:
+                print(sink["name"], " -> [hidden]")
                 continue
             display_name = sink["display_name"]
             if sink["name"] in self.settings["display_names"]:
                 display_name = self.settings["display_names"][sink["name"]]
+            print(sink["name"] + " -> " + display_name)
             sink_button = Gtk.Button.new_with_label(display_name)
             sink_button.connect("clicked", self.on_sink_clicked, sink)
             hbox.pack_start(sink_button, True, True, 0)
+
+        self.show_all()
 
     def on_sink_clicked(self, button, *data):
         sink = data[0]
@@ -87,7 +89,5 @@ class SDS(Gtk.Window):
             Gtk.main_quit()
 
 
-sds = SDS()
-sds.connect("destroy", Gtk.main_quit)
-sds.show_all()
+SDS()
 Gtk.main()
